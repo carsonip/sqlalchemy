@@ -578,7 +578,7 @@ class ResultProxy(object):
         """
         try:
             return self.context.rowcount
-        except Exception as e:
+        except BaseException as e:
             self.connection._handle_dbapi_exception(
                 e, None, None, self.cursor, self.context)
 
@@ -600,7 +600,7 @@ class ResultProxy(object):
         """
         try:
             return self._saved_cursor.lastrowid
-        except Exception as e:
+        except BaseException as e:
             self.connection._handle_dbapi_exception(
                 e, None, None,
                 self._saved_cursor, self.context)
@@ -964,7 +964,7 @@ class ResultProxy(object):
             l = self.process_rows(self._fetchall_impl())
             self._soft_close()
             return l
-        except Exception as e:
+        except BaseException as e:
             self.connection._handle_dbapi_exception(
                 e, None, None,
                 self.cursor, self.context)
@@ -993,7 +993,7 @@ class ResultProxy(object):
             if len(l) == 0:
                 self._soft_close()
             return l
-        except Exception as e:
+        except BaseException as e:
             self.connection._handle_dbapi_exception(
                 e, None, None,
                 self.cursor, self.context)
@@ -1022,7 +1022,7 @@ class ResultProxy(object):
             else:
                 self._soft_close()
                 return None
-        except Exception as e:
+        except BaseException as e:
             self.connection._handle_dbapi_exception(
                 e, None, None,
                 self.cursor, self.context)
@@ -1041,7 +1041,7 @@ class ResultProxy(object):
 
         try:
             row = self._fetchone_impl()
-        except Exception as e:
+        except BaseException as e:
             self.connection._handle_dbapi_exception(
                 e, None, None,
                 self.cursor, self.context)
