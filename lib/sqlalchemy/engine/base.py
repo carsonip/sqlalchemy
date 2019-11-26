@@ -1065,7 +1065,7 @@ class Connection(Connectable):
         dialect = self.dialect
         if "compiled_cache" in self._execution_options:
             key = (
-                dialect,
+                dialect.name,  # Allow different connections to share the cache key
                 elem,
                 tuple(sorted(keys)),
                 self.schema_for_object.hash_key,
