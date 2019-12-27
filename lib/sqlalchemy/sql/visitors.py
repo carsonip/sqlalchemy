@@ -378,13 +378,13 @@ def traverse_depthfirst(obj, opts, visitors):
     return traverse_using(iterate_depthfirst(obj, opts), obj, visitors)
 
 
-def clone(elem, visitors, cloned, stop_on):
+def _clone(elem, visitors, cloned, stop_on):
     if elem in stop_on:
         return elem
     else:
         if id(elem) not in cloned:
             cloned[id(elem)] = newelem = elem._clone()
-            newelem._copy_internals(clone=clone,
+            newelem._copy_internals(clone=_clone,
                                     visitors=visitors, cloned=cloned, stop_on=stop_on)
             meth = visitors.get(newelem.__visit_name__, None)
             if meth:
@@ -420,8 +420,26 @@ def cloned_traverse(obj, opts, visitors):
     stop_on = set(opts.get("stop_on", []))
 
     if obj is not None:
-        obj = clone(obj, visitors=visitors, cloned=cloned, stop_on=stop_on)
+        obj = _clone(obj, visitors=visitors, cloned=cloned, stop_on=stop_on)
     return obj
+
+
+def _clone_replace(elem, cloned, stop_on, replace, **kw):
+    if (
+        id(elem) in stop_on
+        or "no_replacement_traverse" in elem._annotations
+    ):
+        return elem
+    else:
+        newelem = replace(elem)
+        if newelem is not None:
+            stop_on.add(id(newelem))
+            return newelem
+        else:
+            if elem not in cloned:
+                cloned[elem] = newelem = elem._clone()
+                newelem._copy_internals(clone=_clone_replace, cloned=cloned, stop_on=stop_on, replace=replace, **kw)
+            return cloned[elem]
 
 
 def replacement_traverse(obj, opts, replace):
@@ -450,24 +468,8 @@ def replacement_traverse(obj, opts, replace):
 
     cloned = {}
     stop_on = {id(x) for x in opts.get("stop_on", [])}
-
-    def clone(elem, **kw):
-        if (
-            id(elem) in stop_on
-            or "no_replacement_traverse" in elem._annotations
-        ):
-            return elem
-        else:
-            newelem = replace(elem)
-            if newelem is not None:
-                stop_on.add(id(newelem))
-                return newelem
-            else:
-                if elem not in cloned:
-                    cloned[elem] = newelem = elem._clone()
-                    newelem._copy_internals(clone=clone, **kw)
-                return cloned[elem]
+    opts.pop('stop_on', None)
 
     if obj is not None:
-        obj = clone(obj, **opts)
+        obj = _clone_replace(obj, cloned=cloned, stop_on=stop_on, replace=replace, **opts)
     return obj
