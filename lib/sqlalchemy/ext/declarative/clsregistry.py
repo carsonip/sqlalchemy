@@ -264,30 +264,33 @@ class _class_resolver(object):
         self.prop = prop
         self.arg = self._declarative_arg = arg
         self.fallback = fallback
-        self._dict = util.PopulateDict(self._access_cls)
+
+        def _access_cls(key, selfref=weakref.ref(self)):
+            self = selfref()
+            if self is not None:
+                cls = self.cls
+                if key in cls._decl_class_registry:
+                    return _determine_container(key, cls._decl_class_registry[key])
+                elif key in cls.metadata.tables:
+                    return cls.metadata.tables[key]
+                elif key in cls.metadata._schemas:
+                    return _GetTable(key, cls.metadata)
+                elif (
+                        "_sa_module_registry" in cls._decl_class_registry
+                        and key in cls._decl_class_registry["_sa_module_registry"]
+                ):
+                    registry = cls._decl_class_registry["_sa_module_registry"]
+                    return registry.resolve_attr(key)
+                elif self._resolvers:
+                    for resolv in self._resolvers:
+                        value = resolv(key)
+                        if value is not None:
+                            return value
+
+                return self.fallback[key]
+
+        self._dict = util.PopulateDict(_access_cls)
         self._resolvers = ()
-
-    def _access_cls(self, key):
-        cls = self.cls
-        if key in cls._decl_class_registry:
-            return _determine_container(key, cls._decl_class_registry[key])
-        elif key in cls.metadata.tables:
-            return cls.metadata.tables[key]
-        elif key in cls.metadata._schemas:
-            return _GetTable(key, cls.metadata)
-        elif (
-            "_sa_module_registry" in cls._decl_class_registry
-            and key in cls._decl_class_registry["_sa_module_registry"]
-        ):
-            registry = cls._decl_class_registry["_sa_module_registry"]
-            return registry.resolve_attr(key)
-        elif self._resolvers:
-            for resolv in self._resolvers:
-                value = resolv(key)
-                if value is not None:
-                    return value
-
-        return self.fallback[key]
 
     def __call__(self):
         try:
