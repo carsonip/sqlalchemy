@@ -2287,15 +2287,16 @@ class RelationshipProperty(StrategizedProperty):
         )
 
 
-def _annotate_columns(element, annotations):
-    def clone(elem):
-        if isinstance(elem, expression.ColumnClause):
-            elem = elem._annotate(annotations.copy())
-        elem._copy_internals(clone=clone)
-        return elem
+def _clone_annotate_cols(elem, annotations):
+    if isinstance(elem, expression.ColumnClause):
+        elem = elem._annotate(annotations.copy())
+    elem._copy_internals(clone=_clone_annotate_cols, annotations=annotations)
+    return elem
 
+
+def _annotate_columns(element, annotations):
     if element is not None:
-        element = clone(element)
+        element = _clone_annotate_cols(element, annotations=annotations)
     return element
 
 

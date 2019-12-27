@@ -112,6 +112,21 @@ class Annotated(object):
 annotated_classes = {}
 
 
+def _clone_annotate(elem, annotations, exclude):
+    if (
+            exclude
+            and hasattr(elem, "proxy_set")
+            and elem.proxy_set.intersection(exclude)
+    ):
+        newelem = elem._clone()
+    elif annotations != elem._annotations:
+        newelem = elem._annotate(annotations)
+    else:
+        newelem = elem
+    newelem._copy_internals(clone=_clone_annotate, annotations=annotations, exclude=exclude)
+    return newelem
+
+
 def _deep_annotate(element, annotations, exclude=None):
     """Deep copy the given ClauseElement, annotating each element
     with the given annotations dictionary.
@@ -119,49 +134,34 @@ def _deep_annotate(element, annotations, exclude=None):
     Elements within the exclude collection will be cloned but not annotated.
 
     """
-
-    def clone(elem):
-        if (
-            exclude
-            and hasattr(elem, "proxy_set")
-            and elem.proxy_set.intersection(exclude)
-        ):
-            newelem = elem._clone()
-        elif annotations != elem._annotations:
-            newelem = elem._annotate(annotations)
-        else:
-            newelem = elem
-        newelem._copy_internals(clone=clone)
-        return newelem
-
     if element is not None:
-        element = clone(element)
+        element = _clone_annotate(element, annotations=annotations, exclude=exclude)
     return element
+
+
+def _clone_deannotate(elem, cloned, values):
+    # if a values dict is given,
+    # the elem must be cloned each time it appears,
+    # as there may be different annotations in source
+    # elements that are remaining.  if totally
+    # removing all annotations, can assume the same
+    # slate...
+    if values or elem not in cloned:
+        newelem = elem._deannotate(values=values, clone=True)
+        newelem._copy_internals(clone=_clone_deannotate, cloned=cloned, values=values)
+        if not values:
+            cloned[elem] = newelem
+        return newelem
+    else:
+        return cloned[elem]
 
 
 def _deep_deannotate(element, values=None):
     """Deep copy the given element, removing annotations."""
-
     cloned = util.column_dict()
 
-    def clone(elem):
-        # if a values dict is given,
-        # the elem must be cloned each time it appears,
-        # as there may be different annotations in source
-        # elements that are remaining.  if totally
-        # removing all annotations, can assume the same
-        # slate...
-        if values or elem not in cloned:
-            newelem = elem._deannotate(values=values, clone=True)
-            newelem._copy_internals(clone=clone)
-            if not values:
-                cloned[elem] = newelem
-            return newelem
-        else:
-            return cloned[elem]
-
     if element is not None:
-        element = clone(element)
+        element = _clone_deannotate(element, cloned=cloned, values=values)
     return element
 
 
