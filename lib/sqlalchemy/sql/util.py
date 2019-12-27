@@ -166,6 +166,29 @@ def find_left_clause_to_join_from(clauses, join_to, onclause):
         return idx
 
 
+def _visit(element, fn, stack):
+    if isinstance(element, ScalarSelect):
+        # we don't want to dig into correlated subqueries,
+        # those are just column elements by themselves
+        yield element
+    elif element.__visit_name__ == "binary" and operators.is_comparison(
+        element.operator
+    ):
+        stack.insert(0, element)
+        for l in _visit(element.left, fn=fn, stack=stack):
+            for r in _visit(element.right, fn=fn, stack=stack):
+                fn(stack[0], l, r)
+        stack.pop(0)
+        for elem in element.get_children():
+            _visit(elem, fn=fn, stack=stack)
+    else:
+        if isinstance(element, ColumnClause):
+            yield element
+        for elem in element.get_children():
+            for e in _visit(elem, fn=fn, stack=stack):
+                yield e
+
+
 def visit_binary_product(fn, expr):
     """Produce a traversal of the given expression, delivering
     column comparisons to the given function.
@@ -202,30 +225,7 @@ def visit_binary_product(fn, expr):
 
     """
     stack = []
-
-    def visit(element):
-        if isinstance(element, ScalarSelect):
-            # we don't want to dig into correlated subqueries,
-            # those are just column elements by themselves
-            yield element
-        elif element.__visit_name__ == "binary" and operators.is_comparison(
-            element.operator
-        ):
-            stack.insert(0, element)
-            for l in visit(element.left):
-                for r in visit(element.right):
-                    fn(stack[0], l, r)
-            stack.pop(0)
-            for elem in element.get_children():
-                visit(elem)
-        else:
-            if isinstance(element, ColumnClause):
-                yield element
-            for elem in element.get_children():
-                for e in visit(elem):
-                    yield e
-
-    list(visit(expr))
+    list(_visit(expr, fn=fn, stack=stack))
 
 
 def find_tables(

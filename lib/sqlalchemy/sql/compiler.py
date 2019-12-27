@@ -1908,89 +1908,7 @@ class SQLCompiler(Compiled):
         """
         cloned = {}
         column_translate = [{}]
-
-        def visit(element, **kw):
-            if element in column_translate[-1]:
-                return column_translate[-1][element]
-
-            elif element in cloned:
-                return cloned[element]
-
-            newelem = cloned[element] = element._clone()
-
-            if (
-                newelem.is_selectable
-                and newelem._is_join
-                and isinstance(newelem.right, selectable.FromGrouping)
-            ):
-
-                newelem._reset_exported()
-                newelem.left = visit(newelem.left, **kw)
-
-                right = visit(newelem.right, **kw)
-
-                selectable_ = selectable.Select(
-                    [right.element], use_labels=True
-                ).alias()
-
-                for c in selectable_.c:
-                    c._key_label = c.key
-                    c._label = c.name
-
-                translate_dict = dict(
-                    zip(newelem.right.element.c, selectable_.c)
-                )
-
-                # translating from both the old and the new
-                # because different select() structures will lead us
-                # to traverse differently
-                translate_dict[right.element.left] = selectable_
-                translate_dict[right.element.right] = selectable_
-                translate_dict[newelem.right.element.left] = selectable_
-                translate_dict[newelem.right.element.right] = selectable_
-
-                # propagate translations that we've gained
-                # from nested visit(newelem.right) outwards
-                # to the enclosing select here.  this happens
-                # only when we have more than one level of right
-                # join nesting, i.e. "a JOIN (b JOIN (c JOIN d))"
-                for k, v in list(column_translate[-1].items()):
-                    if v in translate_dict:
-                        # remarkably, no current ORM tests (May 2013)
-                        # hit this condition, only test_join_rewriting
-                        # does.
-                        column_translate[-1][k] = translate_dict[v]
-
-                column_translate[-1].update(translate_dict)
-
-                newelem.right = selectable_
-
-                newelem.onclause = visit(newelem.onclause, **kw)
-
-            elif newelem._is_from_container:
-                # if we hit an Alias, CompoundSelect or ScalarSelect, put a
-                # marker in the stack.
-                kw["transform_clue"] = "select_container"
-                newelem._copy_internals(clone=visit, **kw)
-            elif newelem.is_selectable and newelem._is_select:
-                barrier_select = (
-                    kw.get("transform_clue", None) == "select_container"
-                )
-                # if we're still descended from an
-                # Alias/CompoundSelect/ScalarSelect, we're
-                # in a FROM clause, so start with a new translate collection
-                if barrier_select:
-                    column_translate.append({})
-                kw["transform_clue"] = "inside_select"
-                newelem._copy_internals(clone=visit, **kw)
-                if barrier_select:
-                    del column_translate[-1]
-            else:
-                newelem._copy_internals(clone=visit, **kw)
-
-            return newelem
-
-        return visit(select)
+        return _visit(select, cloned=cloned, column_translate=column_translate)
 
     def _transform_result_map_for_nested_joins(
         self, select, transformed_select
@@ -3818,3 +3736,89 @@ class IdentifierPreparer(object):
             self._unescape_identifier(i)
             for i in [a or b for a, b in r.findall(identifiers)]
         ]
+
+
+def _visit(element, cloned, column_translate, **kw):
+    if element in column_translate[-1]:
+        return column_translate[-1][element]
+
+    elif element in cloned:
+        return cloned[element]
+
+    newelem = cloned[element] = element._clone()
+
+    if (
+        newelem.is_selectable
+        and newelem._is_join
+        and isinstance(newelem.right, selectable.FromGrouping)
+    ):
+
+        newelem._reset_exported()
+        newelem.left = _visit(newelem.left, cloned=cloned, column_translate=column_translate, **kw)
+
+        right = _visit(newelem.right, cloned=cloned, column_translate=column_translate, **kw)
+
+        selectable_ = selectable.Select(
+            [right.element], use_labels=True
+        ).alias()
+
+        for c in selectable_.c:
+            c._key_label = c.key
+            c._label = c.name
+
+        translate_dict = dict(
+            zip(newelem.right.element.c, selectable_.c)
+        )
+
+        # translating from both the old and the new
+        # because different select() structures will lead us
+        # to traverse differently
+        translate_dict[right.element.left] = selectable_
+        translate_dict[right.element.right] = selectable_
+        translate_dict[newelem.right.element.left] = selectable_
+        translate_dict[newelem.right.element.right] = selectable_
+
+        # propagate translations that we've gained
+        # from nested visit(newelem.right) outwards
+        # to the enclosing select here.  this happens
+        # only when we have more than one level of right
+        # join nesting, i.e. "a JOIN (b JOIN (c JOIN d))"
+        for k, v in list(column_translate[-1].items()):
+            if v in translate_dict:
+                # remarkably, no current ORM tests (May 2013)
+                # hit this condition, only test_join_rewriting
+                # does.
+                column_translate[-1][k] = translate_dict[v]
+
+        column_translate[-1].update(translate_dict)
+
+        newelem.right = selectable_
+
+        newelem.onclause = _visit(newelem.onclause,
+                                  cloned=cloned, column_translate=column_translate, **kw)
+
+    elif newelem._is_from_container:
+        # if we hit an Alias, CompoundSelect or ScalarSelect, put a
+        # marker in the stack.
+        kw["transform_clue"] = "select_container"
+        newelem._copy_internals(clone=_visit,
+                                cloned=cloned, column_translate=column_translate, **kw)
+    elif newelem.is_selectable and newelem._is_select:
+        barrier_select = (
+            kw.get("transform_clue", None) == "select_container"
+        )
+        # if we're still descended from an
+        # Alias/CompoundSelect/ScalarSelect, we're
+        # in a FROM clause, so start with a new translate collection
+        if barrier_select:
+            column_translate.append({})
+        kw["transform_clue"] = "inside_select"
+        newelem._copy_internals(clone=_visit,
+                                cloned=cloned, column_translate=column_translate, **kw)
+        if barrier_select:
+            del column_translate[-1]
+    else:
+        newelem._copy_internals(clone=_visit,
+                                cloned=cloned, column_translate=column_translate, **kw)
+
+    return newelem
