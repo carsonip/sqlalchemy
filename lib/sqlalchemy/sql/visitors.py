@@ -378,6 +378,20 @@ def traverse_depthfirst(obj, opts, visitors):
     return traverse_using(iterate_depthfirst(obj, opts), obj, visitors)
 
 
+def clone(elem, visitors, cloned, stop_on):
+    if elem in stop_on:
+        return elem
+    else:
+        if id(elem) not in cloned:
+            cloned[id(elem)] = newelem = elem._clone()
+            newelem._copy_internals(clone=clone,
+                                    visitors=visitors, cloned=cloned, stop_on=stop_on)
+            meth = visitors.get(newelem.__visit_name__, None)
+            if meth:
+                meth(newelem)
+        return cloned[id(elem)]
+
+
 def cloned_traverse(obj, opts, visitors):
     """clone the given expression structure, allowing modifications by
     visitors.
@@ -405,20 +419,8 @@ def cloned_traverse(obj, opts, visitors):
     cloned = {}
     stop_on = set(opts.get("stop_on", []))
 
-    def clone(elem):
-        if elem in stop_on:
-            return elem
-        else:
-            if id(elem) not in cloned:
-                cloned[id(elem)] = newelem = elem._clone()
-                newelem._copy_internals(clone=clone)
-                meth = visitors.get(newelem.__visit_name__, None)
-                if meth:
-                    meth(newelem)
-            return cloned[id(elem)]
-
     if obj is not None:
-        obj = clone(obj)
+        obj = clone(obj, visitors=visitors, cloned=cloned, stop_on=stop_on)
     return obj
 
 
