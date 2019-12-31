@@ -264,7 +264,7 @@ class _class_resolver(object):
         self.prop = prop
         self.arg = self._declarative_arg = arg
         self.fallback = fallback
-        self._dict = util.PopulateDict(self._access_cls)
+        self._dict = util.WeakPopulateDict(self._access_cls)
         self._resolvers = ()
 
     def _access_cls(self, key):
